@@ -8,7 +8,7 @@ const config = {
 	providers: [
 		Resend({
 			apiKey: process.env.RESEND_KEY,
-			from: "noreply@resend.codefastsaas.com",
+			from: "noreply@resend.jobtrackr.xyz",
 			name: "Email",
 		}),
 		Google({
