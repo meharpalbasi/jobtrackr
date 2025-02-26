@@ -1,57 +1,114 @@
-import Link from "next/link";
+"use client";
+
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { toast } from "react-hot-toast";
 import ButtonLogout from "@/components/ButtonLogout";
-import FormNewBoard from "@/components/FormNewBoard";
-import { auth } from "@/auth";
-import connectMongo from "@/libs/mongoose";
-import User from "@/models/User";
-import ButtonCheckout from "@/components/ButtonCheckout";
-import ButtonPortal from "@/components/ButtonPortal";
+import AddJobForm from "@/components/AddFormJob";
+import JobTable from "@/components/JobTable";
 
-async function getUser() {
-	const session = await auth();
+export default function Dashboard() {
+  const [jobs, setJobs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-	await connectMongo();
+  const fetchJobs = async () => {
+    try {
+      setIsLoading(true);
+      const response = await axios.get('/api/jobs');
+      setJobs(response.data);
+    } catch (error) {
+      toast.error("Failed to load jobs");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-	return await User.findById(session.user.id).populate("boards");
-}
+  useEffect(() => {
+    fetchJobs();
+  }, []);
 
-export default async function Dashboard() {
-	const user = await getUser();
+  const handleJobAdded = (newJob) => {
+    setJobs(prevJobs => [newJob, ...prevJobs]);
+  };
 
-	return (
-		<main className="bg-base-200 min-h-screen">
-			{/* HEADER */}
-			<section className="bg-base-100">
-				<div className="max-w-5xl mx-auto px-5 py-3 flex justify-between">
-					{user.hasAccess ? <ButtonPortal /> : <ButtonCheckout />}
-					<ButtonLogout />
-				</div>
-			</section>
+  const handleStatusChange = async (jobId, newStatus) => {
+    try {
+      await axios.put('/api/jobs', { id: jobId, status: newStatus });
+      setJobs(prevJobs => 
+        prevJobs.map(job => 
+          job._id === jobId ? { ...job, status: newStatus } : job
+        )
+      );
+      toast.success("Status updated");
+    } catch (error) {
+      toast.error("Failed to update status");
+    }
+  };
 
-			<section className="max-w-5xl mx-auto px-5 py-12 space-y-12">
-				<FormNewBoard />
+  const handleDelete = async (jobId) => {
+    if (!confirm("Are you sure you want to delete this job?")) return;
+    
+    try {
+      await axios.delete(`/api/jobs?id=${jobId}`);
+      setJobs(prevJobs => prevJobs.filter(job => job._id !== jobId));
+      toast.success("Job deleted");
+    } catch (error) {
+      toast.error("Failed to delete job");
+    }
+  };
 
-				<div>
-					<h1 className="font-extrabold text-xl mb-4">
-						{user.boards.length} Boards
-					</h1>
+  return (
+    <main className="bg-base-200 min-h-screen">
+      <section className="bg-base-100">
+        <div className="max-w-7xl mx-auto px-5 py-3 flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Job Applications</h1>
+          <ButtonLogout />
+        </div>
+      </section>
 
-					<ul className="space-y-4">
-						{user.boards.map((board) => {
-							return (
-								<li key={board._id}>
-									<Link
-										href={`/dashboard/b/${board._id}`}
-										className="block bg-base-100 p-6 rounded-3xl hover:bg-neutral hover:text-neutral-content duration-200"
-									>
-										{board.name}
-									</Link>
-								</li>
-							);
-						})}
-					</ul>
-				</div>
-			</section>
-		</main>
-	);
+      <section className="max-w-7xl mx-auto px-5 py-8">
+        {isLoading ? (
+          <div className="flex justify-center">
+            <span className="loading loading-spinner loading-lg"></span>
+          </div>
+        ) : (
+          <>
+            <div className="stats shadow mb-8">
+              <div className="stat">
+                <div className="stat-title">Total Applications</div>
+                <div className="stat-value">{jobs.length}</div>
+              </div>
+              <div className="stat">
+                <div className="stat-title">Active Applications</div>
+                <div className="stat-value">
+                  {jobs.filter(job => !['Rejected', 'Declined', 'Accepted'].includes(job.status)).length}
+                </div>
+              </div>
+              <div className="stat">
+                <div className="stat-title">Success Rate</div>
+                <div className="stat-value">
+                  {jobs.length ? 
+                    Math.round((jobs.filter(job => job.status === 'Accepted').length / jobs.length) * 100)
+                    : 0}%
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+              <div>
+                <AddJobForm onJobAdded={handleJobAdded} />
+              </div>
+              <div className="lg:col-span-3">
+                <JobTable 
+                  jobs={jobs} 
+                  onStatusChange={handleStatusChange} 
+                  onDelete={handleDelete} 
+                />
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+    </main>
+  );
 }
